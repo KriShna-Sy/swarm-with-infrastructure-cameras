@@ -1,0 +1,1 @@
+timestamp_s,rmse_ekf_fwld_1,rmse_naive_fwld_1,cov_trace_fwld_1,rmse_ekf_fwld_2,rmse_naive_fwld_2,cov_trace_fwld_2,inter_robot_dist,min_clearance_record
