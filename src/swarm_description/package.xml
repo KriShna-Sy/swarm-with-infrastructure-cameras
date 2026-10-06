@@ -1,0 +1,49 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>swarm_description</name>
+  <version>1.1.0</version>
+  <description>
+    Infrastructure-Visual SLAM for Lightweight Swarms.
+    Differential-drive FWLD robots navigate a confined space with NO
+    onboard sensors. Cameras are fixed to the room walls (OAK-D Lite +
+    RealSense D435), fused into a TF-correct /merged_cloud, consumed by
+    RTAB-Map (single-robot mapping demo) and by infra_localizer.py
+    (multi-robot pose estimation, since a shared odom-driven RTAB-Map
+    instance cannot localise more than one robot at a time).
+  </description>
+  <maintainer email="me25mtech12005@iith.ac.in">Chinnikrishna</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>xacro</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>joint_state_publisher</exec_depend>
+
+  <exec_depend>ros_gz_sim</exec_depend>
+  <exec_depend>ros_gz_bridge</exec_depend>
+
+  <exec_depend>teleop_twist_keyboard</exec_depend>
+
+  <exec_depend>rtabmap_ros</exec_depend>
+  <exec_depend>rtabmap_slam</exec_depend>
+  <exec_depend>rtabmap_viz</exec_depend>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>tf2_sensor_msgs</exec_depend>
+  <exec_depend>sensor_msgs_py</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>visualization_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

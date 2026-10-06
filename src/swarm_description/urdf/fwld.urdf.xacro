@@ -1,0 +1,375 @@
+<?xml version="1.0"?>
+<!--
+  FWLD — swarm_description
+  ROS2 Jazzy + Gazebo Harmonic
+
+  Uses gz-sim-diff-drive-system (Gazebo native plugin) rather than
+  gz_ros2_control; no ros2_control/controllers.yaml involved.
+
+  MULTI-ROBOT FIX: every link/joint name and every Gazebo plugin topic
+  is now prefixed by ${robot_name} (xacro arg, default "fwld"). Before
+  this, both swarm robots would spawn with identical link names
+  ("base_link", "r1"...) and identical global topics
+  (/diff_drive_controller/{cmd_vel,odom}, /tf), which meant a second
+  robot could not coexist with the first; their TF trees and
+  cmd_vel/odom would collide outright. Pass robot_name via
+  spawn_swarm.launch.py to get fwld_1, fwld_2, ... with cleanly
+  separated /<robot_name>/cmd_vel, /<robot_name>/odom topics and
+  <robot_name>_base_link / <robot_name>_odom TF frames.
+-->
+<robot name="fwld" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:arg name="robot_name" default="fwld"/>
+  <xacro:property name="robot_name" value="$(arg robot_name)"/>
+
+  <!-- =========================================================== -->
+  <!--  MACROS                                                      -->
+  <!-- =========================================================== -->
+
+  <xacro:macro name="wheel" params="name">
+    <link name="${name}">
+      <visual>
+        <origin xyz="0 0 0" rpy="-1.5708 0 0"/>
+        <geometry>
+          <cylinder radius="0.036" length="0.016"/>
+        </geometry>
+        <material name="black">
+          <color rgba="0.05 0.05 0.05 1"/>
+        </material>
+      </visual>
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.260"/>
+        <inertia
+          ixx="8.468e-05" iyy="1.688e-04" izz="8.468e-05"
+          ixy="0.0"       iyz="0.0"       ixz="0.0"/>
+      </inertial>
+      <collision>
+        <origin xyz="0 0 0" rpy="-1.5708 0 0"/>
+        <geometry>
+          <cylinder radius="0.036" length="0.016"/>
+        </geometry>
+      </collision>
+    </link>
+    <gazebo reference="${name}">
+      <material>Gazebo/Black</material>
+      <mu1>2.0</mu1>
+      <mu2>2.0</mu2>
+      <kp>1e6</kp>
+      <kd>10.0</kd>
+      <minDepth>0.001</minDepth>
+    </gazebo>
+  </xacro:macro>
+
+  <xacro:macro name="side_panel" params="name">
+    <link name="${name}">
+      <visual>
+        <geometry><box size="0.218 0.034 0.002"/></geometry>
+        <material name="panel_blue">
+          <color rgba="0.1 0.3 0.8 1"/>
+        </material>
+      </visual>
+      <inertial>
+        <mass value="0.05"/>
+        <inertia ixx="4.833e-06" ixy="0" ixz="0"
+                 iyy="1.980e-04" iyz="0" izz="2.027e-04"/>
+      </inertial>
+      <collision>
+        <geometry><box size="0.218 0.034 0.002"/></geometry>
+      </collision>
+    </link>
+    <gazebo reference="${name}">
+      <material>Gazebo/Blue</material>
+    </gazebo>
+  </xacro:macro>
+
+  <!-- =========================================================== -->
+  <!--  LINKS                                                       -->
+  <!-- =========================================================== -->
+
+  <!-- base_footprint = massless root (required by KDL/robot_state_publisher) -->
+  <link name="${robot_name}_base_footprint"/>
+
+  <link name="${robot_name}_base_link">
+    <visual>
+      <geometry><box size="0.218 0.147 0.002"/></geometry>
+      <material name="chassis_red">
+        <color rgba="0.85 0.1 0.1 1"/>
+      </material>
+    </visual>
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.5"/>
+      <inertia ixx="9.005e-04" ixy="0" ixz="0"
+               iyy="1.980e-03" iyz="0" izz="2.881e-03"/>
+    </inertial>
+    <collision>
+      <geometry><box size="0.218 0.147 0.002"/></geometry>
+    </collision>
+  </link>
+
+  <link name="${robot_name}_battery">
+    <visual>
+      <geometry><box size="0.076 0.140 0.076"/></geometry>
+      <material name="battery_orange">
+        <color rgba="1.0 0.5 0.0 1"/>
+      </material>
+    </visual>
+    <inertial>
+      <mass value="1.36"/>
+      <inertia ixx="2.876e-03" ixy="0" ixz="0"
+               iyy="1.309e-03" iyz="0" izz="2.876e-03"/>
+    </inertial>
+    <collision>
+      <geometry><box size="0.076 0.140 0.076"/></geometry>
+    </collision>
+  </link>
+
+  <xacro:wheel name="${robot_name}_w1"/>
+  <xacro:wheel name="${robot_name}_w2"/>
+  <xacro:wheel name="${robot_name}_w3"/>
+  <xacro:wheel name="${robot_name}_w4"/>
+  <xacro:side_panel name="${robot_name}_left_panel"/>
+  <xacro:side_panel name="${robot_name}_right_panel"/>
+
+  <!-- =========================================================== -->
+  <!--  GRIPPER (floor-level pick, functional/actuated)             -->
+  <!--  base_link -> lift (prismatic, z) -> gripper_base            -->
+  <!--             -> finger_left / finger_right (revolute)         -->
+  <!-- =========================================================== -->
+
+  <link name="${robot_name}_gripper_base">
+    <visual>
+      <geometry><box size="0.03 0.05 0.03"/></geometry>
+      <material name="gripper_black"><color rgba="0.1 0.1 0.1 1"/></material>
+    </visual>
+    <inertial><mass value="0.05"/>
+      <inertia ixx="1e-5" ixy="0" ixz="0" iyy="1e-5" iyz="0" izz="1e-5"/>
+    </inertial>
+    <collision><geometry><box size="0.03 0.05 0.03"/></geometry></collision>
+  </link>
+
+  <xacro:macro name="finger" params="name mirror">
+    <link name="${name}">
+      <visual>
+        <origin xyz="0.02 0 0" rpy="0 0 0"/>
+        <geometry><box size="0.04 0.008 0.012"/></geometry>
+        <material name="gripper_black2"><color rgba="0.1 0.1 0.1 1"/></material>
+      </visual>
+      <inertial><mass value="0.01"/>
+        <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+      </inertial>
+      <collision>
+        <origin xyz="0.02 0 0" rpy="0 0 0"/>
+        <geometry><box size="0.04 0.008 0.012"/></geometry>
+      </collision>
+    </link>
+    <gazebo reference="${name}">
+      <mu1>1.5</mu1><mu2>1.5</mu2>
+    </gazebo>
+  </xacro:macro>
+  <xacro:finger name="${robot_name}_finger_left"  mirror="1"/>
+  <xacro:finger name="${robot_name}_finger_right" mirror="-1"/>
+
+  <!-- Status LED: small emissive box on top of the chassis -->
+  <link name="${robot_name}_led">
+    <visual>
+      <geometry><box size="0.02 0.02 0.015"/></geometry>
+      <material name="led_idle"><color rgba="0.0 1.0 0.0 1"/></material>
+    </visual>
+    <inertial><mass value="0.001"/>
+      <inertia ixx="1e-8" ixy="0" ixz="0" iyy="1e-8" iyz="0" izz="1e-8"/>
+    </inertial>
+  </link>
+
+  <!-- =========================================================== -->
+  <!--  JOINTS                                                      -->
+  <!-- =========================================================== -->
+
+  <!-- base_footprint → base_link: wheels at z=0 rel to base_link,
+       spawn at z=0.036 so wheel bottoms touch ground -->
+  <joint name="${robot_name}_base_footprint_joint" type="fixed">
+    <parent link="${robot_name}_base_footprint"/>
+    <child  link="${robot_name}_base_link"/>
+    <origin xyz="0 0 0.036" rpy="0 0 0"/>
+  </joint>
+
+  <joint name="${robot_name}_j2" type="fixed">
+    <parent link="${robot_name}_base_link"/>
+    <child  link="${robot_name}_left_panel"/>
+    <origin xyz="0 0.0735 0.018" rpy="1.5708 0 0"/>
+  </joint>
+
+  <joint name="${robot_name}_j3" type="fixed">
+    <parent link="${robot_name}_base_link"/>
+    <child  link="${robot_name}_right_panel"/>
+    <origin xyz="0 -0.0735 0.018" rpy="1.5708 0 0"/>
+  </joint>
+
+  <joint name="${robot_name}_j4" type="fixed">
+    <parent link="${robot_name}_base_link"/>
+    <child  link="${robot_name}_battery"/>
+    <origin xyz="0 0 0.039" rpy="0 0 0"/>
+  </joint>
+
+  <joint name="${robot_name}_r1" type="continuous">
+    <parent link="${robot_name}_base_link"/>
+    <child  link="${robot_name}_w1"/>
+    <origin xyz=" 0.0775 -0.083 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit effort="10" velocity="10"/>
+  </joint>
+
+  <joint name="${robot_name}_r2" type="continuous">
+    <parent link="${robot_name}_base_link"/>
+    <child  link="${robot_name}_w2"/>
+    <origin xyz="-0.0775 -0.083 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit effort="10" velocity="10"/>
+  </joint>
+
+  <joint name="${robot_name}_r3" type="continuous">
+    <parent link="${robot_name}_base_link"/>
+    <child  link="${robot_name}_w3"/>
+    <origin xyz="-0.0775  0.083 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit effort="10" velocity="10"/>
+  </joint>
+
+  <joint name="${robot_name}_r4" type="continuous">
+    <parent link="${robot_name}_base_link"/>
+    <child  link="${robot_name}_w4"/>
+    <origin xyz=" 0.0775  0.083 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit effort="10" velocity="10"/>
+  </joint>
+
+  <!-- Lift: mounted at front-top of chassis, travels down toward the
+       floor to reach a floor-level object. base_link origin is 0.036m
+       above the floor, so a 0.032m downward stroke is enough. -->
+  <joint name="${robot_name}_lift_joint" type="prismatic">
+    <parent link="${robot_name}_base_link"/>
+    <child  link="${robot_name}_gripper_base"/>
+    <origin xyz="0.109 0 0.02" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-0.032" upper="0.0" effort="20" velocity="0.1"/>
+  </joint>
+
+  <joint name="${robot_name}_finger_left_joint" type="revolute">
+    <parent link="${robot_name}_gripper_base"/>
+    <child  link="${robot_name}_finger_left"/>
+    <origin xyz="0.015 0.01 -0.01" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="0.0" upper="0.6" effort="5" velocity="1.0"/>
+  </joint>
+
+  <joint name="${robot_name}_finger_right_joint" type="revolute">
+    <parent link="${robot_name}_gripper_base"/>
+    <child  link="${robot_name}_finger_right"/>
+    <origin xyz="0.015 -0.01 -0.01" rpy="0 0 0"/>
+    <axis xyz="0 0 -1"/>
+    <limit lower="0.0" upper="0.6" effort="5" velocity="1.0"/>
+  </joint>
+
+  <joint name="${robot_name}_led_joint" type="fixed">
+    <parent link="${robot_name}_base_link"/>
+    <child  link="${robot_name}_led"/>
+    <origin xyz="-0.09 0 0.015" rpy="0 0 0"/>
+  </joint>
+
+  <!-- =========================================================== -->
+  <!--  GAZEBO                                                      -->
+  <!-- =========================================================== -->
+
+  <gazebo reference="${robot_name}_base_link">
+    <material>Gazebo/Red</material>
+  </gazebo>
+
+  <gazebo reference="${robot_name}_battery">
+    <material>Gazebo/Orange</material>
+  </gazebo>
+
+  <!--
+    gz-sim-diff-drive-system: Gazebo Harmonic native plugin.
+    Directly drives wheel joints in physics — no gz_ros2_control needed.
+    Topics are RELATIVE ("cmd_vel", not "/diff_drive_controller/cmd_vel")
+    so Gazebo auto-scopes them per spawned model as
+    /model/<robot_name>/cmd_vel etc. gazebo.launch.py bridges those into
+    matching ROS2 topics. tf_topic stays absolute ("/tf", shared) since
+    each robot's frame_id/child_frame_id are now uniquely prefixed;
+    no per-robot TF topic scoping is needed.
+  -->
+  <gazebo>
+    <plugin filename="gz-sim-diff-drive-system"
+            name="gz::sim::systems::DiffDrive">
+      <left_joint>${robot_name}_r3</left_joint>
+      <left_joint>${robot_name}_r4</left_joint>
+      <right_joint>${robot_name}_r1</right_joint>
+      <right_joint>${robot_name}_r2</right_joint>
+      <wheel_separation>0.166</wheel_separation>
+      <wheel_radius>0.036</wheel_radius>
+      <odom_publish_frequency>50</odom_publish_frequency>
+      <topic>/model/${robot_name}/cmd_vel</topic>
+      <odom_topic>/model/${robot_name}/odometry</odom_topic>
+      <tf_topic>/tf</tf_topic>
+      <frame_id>${robot_name}_odom</frame_id>
+      <child_frame_id>${robot_name}_base_link</child_frame_id>
+      <min_acceleration>-5</min_acceleration>
+      <max_acceleration>5</max_acceleration>
+    </plugin>
+  </gazebo>
+
+  <!--
+    gz-sim-joint-state-publisher: publishes joint_states from Gazebo.
+  -->
+  <gazebo>
+    <plugin filename="gz-sim-joint-state-publisher-system"
+            name="gz::sim::systems::JointStatePublisher">
+      <topic>/model/${robot_name}/joint_states</topic>
+      <joint_name>${robot_name}_r1</joint_name>
+      <joint_name>${robot_name}_r2</joint_name>
+      <joint_name>${robot_name}_r3</joint_name>
+      <joint_name>${robot_name}_r4</joint_name>
+      <joint_name>${robot_name}_lift_joint</joint_name>
+      <joint_name>${robot_name}_finger_left_joint</joint_name>
+      <joint_name>${robot_name}_finger_right_joint</joint_name>
+    </plugin>
+  </gazebo>
+
+  <!--
+    gz-sim-joint-position-controller-system, one per gripper DOF.
+    Default topic would be /model/<name>/joint/<joint>/0/cmd_pos; we
+    pin explicit short topics instead. Each accepts a gz.msgs.Double
+    target position, bridged to ROS2 by pickplace.launch.py.
+    Convention: finger joints 0.0 = CLOSED (grip), ~0.5 = OPEN.
+                lift joint     0.0 = UP (retracted), -0.032 = DOWN (floor).
+  -->
+  <gazebo>
+    <plugin filename="gz-sim-joint-position-controller-system"
+            name="gz::sim::systems::JointPositionController">
+      <joint_name>${robot_name}_lift_joint</joint_name>
+      <topic>/model/${robot_name}/gripper/cmd_lift</topic>
+      <p_gain>50</p_gain><i_gain>0</i_gain><d_gain>2</d_gain>
+      <cmd_max>20</cmd_max><cmd_min>-20</cmd_min>
+    </plugin>
+  </gazebo>
+  <gazebo>
+    <plugin filename="gz-sim-joint-position-controller-system"
+            name="gz::sim::systems::JointPositionController">
+      <joint_name>${robot_name}_finger_left_joint</joint_name>
+      <topic>/model/${robot_name}/gripper/cmd_finger_left</topic>
+      <p_gain>5</p_gain><i_gain>0</i_gain><d_gain>0.2</d_gain>
+      <cmd_max>5</cmd_max><cmd_min>-5</cmd_min>
+    </plugin>
+  </gazebo>
+  <gazebo>
+    <plugin filename="gz-sim-joint-position-controller-system"
+            name="gz::sim::systems::JointPositionController">
+      <joint_name>${robot_name}_finger_right_joint</joint_name>
+      <topic>/model/${robot_name}/gripper/cmd_finger_right</topic>
+      <p_gain>5</p_gain><i_gain>0</i_gain><d_gain>0.2</d_gain>
+      <cmd_max>5</cmd_max><cmd_min>-5</cmd_min>
+    </plugin>
+  </gazebo>
+
+</robot>
